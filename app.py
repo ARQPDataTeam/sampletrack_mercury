@@ -24,7 +24,7 @@ else:
     local = False
 
 # Version number to display
-version = "3.9"
+version = "4.0"
 
 # Setup logger
 if not os.path.exists('logs'):
@@ -868,9 +868,11 @@ def validate_and_display_kitid(n_clicks, text_value, dropdown_value, db_tracking
     filtered_df["sample_start"] = filtered_df["sample_start"].str.slice(stop=16)
     filtered_df["sample_end"] = filtered_df["sample_end"].str.slice(stop=16)
     filtered_df["siteid"] = filtered_df["siteid"].apply(
-        lambda x: next((s for s in sites_clean if isinstance(x, str) and x in s), x)
+        lambda x: next(
+            (s for s in sites_clean if isinstance(x, str) and x.strip() and x in s),
+            x
+        )
     )
-
     global database_df
     database_df = filtered_df
 
