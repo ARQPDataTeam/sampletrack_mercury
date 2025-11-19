@@ -7,6 +7,7 @@ xlrd
 dash
 dash_breakpoints
 dash_bootstrap_components
+typing_extensions
 azure-identity
 azure-storage-blob
 azure-keyvault-secrets

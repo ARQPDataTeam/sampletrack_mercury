@@ -727,8 +727,16 @@ def upload_data_to_database(n_clicks):
         
         df_to_upload['siteid'] = df_to_upload['siteid'].map(siteid_map).fillna(df_to_upload['siteid']) # change column to only contain siteid
         df_to_upload.to_sql('pas_tracking', mercury_sql_engine, if_exists='append', index=False)
-        return html.Div(f"Successfully uploaded {len(df_to_upload)} new entries to 'pas_tracking' table!", style={"color": "green"}), False, []
 
+        # --- changed: include unique kit IDs and timestamp in success message ---
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        unique_kits = sorted(df_to_upload['kitid'].dropna().astype(str).unique().tolist())
+        kits_str = ", ".join(unique_kits) if unique_kits else "None"
+        success_msg = (
+            f"Successfully uploaded {len(df_to_upload)} new entries to 'pas_tracking' table! "
+            f"Kit ID(s): {kits_str}. Submitted at {timestamp}."
+        )
+        return html.Div(success_msg, style={"color": "green"}), False, []
     except Exception as e:
         logging.error(f"Database upload error: {e}")
         return html.Div(f"Error uploading data: {e}.", style={"color": "red"}), False, []
