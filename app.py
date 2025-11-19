@@ -182,7 +182,7 @@ def serve_layout():
 def change_layout(breakpoint_name: str, window_width: int):
     return [
         dbc.Row([
-            html.H1('QP FieldNote - Passive Mercury'),
+            html.H1('SampleTrack - Passive Mercury'),
             html.Span([
                 f'v. {version} ',
                 html.A(
