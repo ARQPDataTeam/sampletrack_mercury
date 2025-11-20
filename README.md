@@ -1,4 +1,4 @@
-# QP FieldNote - Passive Mercury Tracking
+# SampleTrack - Passive Mercury
 
 This Dash application is used for entering, editing, and managing passive mercury sampling tracking information before uploading it to a database.
 
