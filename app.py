@@ -187,7 +187,7 @@ def change_layout(breakpoint_name: str, window_width: int):
                 f'v. {version} ',
                 html.A(
                     "Documentation (how to use)",
-                    href="https://github.com/ARQPDataTeam/qp_fieldnote_pas/blob/main/README.md",
+                    href="https://github.com/ARQPDataTeam/sampletrack_mercury/blob/main/README.md",
                     target="_blank",
                     style={"color": "#66b3ff", "marginLeft": "10px", "fontSize": "0.9em"}
                 )
