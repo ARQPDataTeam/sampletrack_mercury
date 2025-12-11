@@ -1,27 +1,56 @@
-# %% Import + setup
 import dash
 from dash import html, Input, Output, State, ctx, dcc, Dash
 import dash_bootstrap_components as dbc
 import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine, text
-from credentials import sql_engine_string_generator
+# from credentials import sql_engine_string_generator
 from flask import request
 from datetime import datetime
 import os
 import logging
-from dash_breakpoints import WindowBreakpoints
 import socket
 import dash.exceptions
 import dash_ag_grid as dag
 import re
+from dotenv import load_dotenv 
 
-# Local dev boolean
-computer = socket.gethostname()
-if computer == 'WONTN774787':
-    local = True
+parent_dir=os.getcwd()
+computer = socket.gethostname().lower()
+
+if computer == 'wontn74902':
+    host = 'local'
+elif 'qpdata' in computer:
+    host = 'qpdata'
+    load_dotenv(parent_dir+ '/.env') # default is relative local directory 
+
+    # DB_HOST = os.getenv('QP_SERVER')
+    # DB_USER = os.getenv('QP_PSQL_USER')
+    # DB_PASS = os.getenv('QP_PSQL_PASSWORD')
+    DB_HOST = os.getenv('DATAHUB_PSQL_SERVER')
+    DB_USER = os.getenv('DATAHUB_PSQL_USER')
+    DB_PASS = os.getenv('DATAHUB_PSQL_PASSWORD')
+
+elif 'sandbox' in computer:
+    host = 'qpdata'
+    load_dotenv(parent_dir+ '/.env') # default is relative local directory 
+
+    DB_HOST = os.getenv('DATAHUB_PSQL_SERVER')
+    DB_USER = os.getenv('DATAHUB_PSQL_USER')
+    DB_PASS = os.getenv('DATAHUB_PSQL_PASSWORD')
+    # DB_HOST = os.getenv('QP_SERVER')
+    # DB_USER = os.getenv('QP_PSQL_USER')
+    # DB_PASS = os.getenv('QP_PSQL_PASSWORD')
+
 else:
-    local = False
+    host = 'fsdh'
+    load_dotenv(parent_dir+ '/.env') # default is relative local directory 
+
+    DB_HOST = os.getenv('DATAHUB_PSQL_SERVER')
+    DB_USER = os.getenv('DATAHUB_PSQL_USER')
+    DB_PASS = os.getenv('DATAHUB_PSQL_PASSWORD')
+
+print(host, DB_HOST, DB_USER)
 
 # Version number to display
 version = "4.0"
@@ -31,48 +60,73 @@ if not os.path.exists('logs'):
     os.mkdir('logs')
 
 logging.basicConfig(
+    level=logging.DEBUG,
     format='%(message)s',
     filename='logs/log.log',
-    filemode='w+',
-    level=20
+    filemode='w+'
 )
 
-logging.getLogger("azure").setLevel(logging.ERROR)
+logging.getLogger("azure").setLevel(logging.DEBUG)
+
+logger = logging.getLogger(__name__)
+
+logging.basicConfig(level=logging.INFO)
+logger.info(f"Host environment detected: {computer}")
 
 external_stylesheets=[
         dbc.themes.SLATE,
-        "https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css",
+        # "https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css",
+        '/assets/flatpickr.min.css',
         '/assets/custom.css'
 ]
 external_scripts = [
-    "https://cdn.jsdelivr.net/npm/flatpickr",
-    "https://cdn.jsdelivr.net/npm/inputmask/dist/inputmask.min.js"
+    # "https://cdn.jsdelivr.net/npm/flatpickr",
+    # "https://cdn.jsdelivr.net/npm/inputmask/dist/inputmask.min.js"
+    '/assets/flatpickr.min.js',
+    '/assets/inputmask.min.js',
 ]
 
-# Initialize the dash app as 'app'
-if not local:
-    app = Dash(__name__,
-               external_stylesheets=external_stylesheets, 
-               external_scripts=external_scripts,
-               requests_pathname_prefix="/app/AQPD/",
-               routes_pathname_prefix="/app/AQPD/",
-               suppress_callback_exceptions=True)
+# initialize the app based on host
+if host == 'fsdh':
+    url_prefix = "/app/AQPD/"
+    app = dash.Dash(__name__,
+                    requests_pathname_prefix=url_prefix,
+                    routes_pathname_prefix=url_prefix,
+                    external_stylesheets=external_stylesheets, 
+                    external_scripts=external_scripts,
+                    suppress_callback_exceptions=True
+                    )
+elif host == 'qpdata':
+    url_prefix = "/dash_SampleTrack_Mercury/"
+    app = dash.Dash(__name__,
+                    requests_pathname_prefix=url_prefix,
+                    external_stylesheets=external_stylesheets, 
+                    external_scripts=external_scripts,
+                    suppress_callback_exceptions=True,
+                    eager_loading=True
+                    )
+    print('qpdata:  app and server initialized')
 else:
-    app = Dash(__name__,
-               external_stylesheets=external_stylesheets, 
-               external_scripts=external_scripts,
-               suppress_callback_exceptions=True)
+    url_prefix = "/app/AQPD/"
+    app = dash.Dash(__name__,
+                    url_base_pathname=url_prefix,
+                    external_stylesheets=external_stylesheets, 
+                    external_scripts=external_scripts,
+                    suppress_callback_exceptions=True
+                    )
 
-# Global variable to store headers
 request_headers = {}
 
 # Get connection string
-dcp_sql_engine_string = sql_engine_string_generator('DATAHUB_PSQL_SERVER', 'dcp', 'DATAHUB_PSQL_USER', 'DATAHUB_PSQL_PASSWORD', local)
+# dcp_sql_engine_string = sql_engine_string_generator('DATAHUB_PSQL_SERVER', 'dcp', 'DATAHUB_PSQL_USER', 'DATAHUB_PSQL_PASSWORD', True)
+dcp_sql_engine_string = ('postgresql://{}:{}@{}/{}?sslmode=require').format(DB_USER,DB_PASS,DB_HOST,'dcp')
 dcp_sql_engine = create_engine(dcp_sql_engine_string)
 
-mercury_sql_engine_string = sql_engine_string_generator('DATAHUB_PSQL_SERVER', 'mercury_passive', 'DATAHUB_PSQL_USER', 'DATAHUB_PSQL_PASSWORD', local)
+# mercury_sql_engine_string = sql_engine_string_generator('DATAHUB_PSQL_SERVER', 'mercury_passive', 'DATAHUB_PSQL_USER', 'DATAHUB_PSQL_PASSWORD', True)
+mercury_sql_engine_string = ('postgresql://{}:{}@{}/{}?sslmode=require').format(DB_USER,DB_PASS,DB_HOST,'mercury_passive')
 mercury_sql_engine = create_engine(mercury_sql_engine_string)
 
+print('after db engine creation')
 
 # Global storage for the new dataframe
 database_df = pd.DataFrame(columns=[
@@ -96,13 +150,11 @@ headerNames = {
     "note": "Note"
 }
 
-
 # Define the placeholder for date/time columns
 DATE_TIME_PLACEHOLDER = "YYYY-MM-DD HH:MM"
 
 # Table div
 global tablehtml
-
 
 # %% Layout function, useful for having two UI options (e.g., mobile vs desktop)
 def serve_layout():
@@ -112,6 +164,8 @@ def serve_layout():
     global sites_clean
     global tablehtml
     
+    logger.info('starting serve_layout')
+
     # Pull required data from tables
     users = pd.read_sql_table("users", dcp_sql_engine)
     sites = pd.read_sql_query("select * from stations", dcp_sql_engine)
@@ -120,10 +174,12 @@ def serve_layout():
         f"{row.description} ({row.siteid})"
         for _, row in sites.query("projectid == 'MERCURY_PASSIVE'").iterrows()
     ])
-    
+
+    ## test debug output only
+    print (sites_clean [:5])  # Print first 5 entries for verification)
+
     dcp_sql_engine.dispose()
     mercury_sql_engine.dispose()
-    
     
     tablehtml = html.Div(
         dag.AgGrid(
@@ -163,31 +219,15 @@ def serve_layout():
         ),
         style={"padding": "0 40px"}
     )
-    
-    return html.Div([
-        html.Div(id="display", style={'textAlign': 'center'}),
-        WindowBreakpoints(
-            id="breakpoints",
-            widthBreakpointThresholdsPx=[768],
-            widthBreakpointNames=["sm", "lg"]
-        )
-    ])
 
-# %% Desktop layout
-@app.callback(
-    Output("display", "children"),
-    Input("breakpoints", "widthBreakpoint"),
-    State("breakpoints", "width"),
-)
-def change_layout(breakpoint_name: str, window_width: int):
-    return [
+    return [html.Div(id="display", style={'textAlign': 'center'},children = [
         dbc.Row([
             html.H1('SampleTrack - Passive Mercury'),
             html.Span([
                 f'v. {version} ',
                 html.A(
                     "Documentation (how to use)",
-                    href="https://github.com/ARQPDataTeam/sampletrack_mercury/blob/main/README.md",
+                    href="https://github.com/ARQPDataTeam/qp_fieldnote_pas/blob/main/README.md",
                     target="_blank",
                     style={"color": "#66b3ff", "marginLeft": "10px", "fontSize": "0.9em"}
                 )
@@ -380,6 +420,7 @@ def change_layout(breakpoint_name: str, window_width: int):
         ),
         dcc.Store(id="duplicate-rows", data=[]),
         dcc.Store(id="overwrite-confirmed", data=False)
+    ])
     ]
 
 # %% Function to create textbox rows
@@ -626,10 +667,9 @@ def sync_table_edits(cellValueChanged, current_grid_data):
 
 
     database_df = pd.DataFrame(updated_grid_data)
-    database_df.to_csv("debug_database_df.csv",index =False)
+    #database_df.to_csv("debug_database_df.csv",index =False)
 
     return html.Div(feedback_message, style=feedback_style), updated_grid_data
-
 
 # %% Grab user email from headers
 @app.callback(
@@ -648,7 +688,6 @@ def display_headers(_):
 def before_request():
     global request_headers
     request_headers = dict(request.headers)  # Capture headers before processing any request
-
 
 # %% javascript used to autofocus newly created textboxes in "New" modal
 app.clientside_callback(
@@ -728,7 +767,7 @@ def upload_data_to_database(n_clicks):
         df_to_upload['siteid'] = df_to_upload['siteid'].map(siteid_map).fillna(df_to_upload['siteid']) # change column to only contain siteid
         df_to_upload.to_sql('pas_tracking', mercury_sql_engine, if_exists='append', index=False)
 
-        # --- changed: include unique kit IDs and timestamp in success message ---
+        # include unique kit IDs and timestamp in success message
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         unique_kits = sorted(df_to_upload['kitid'].dropna().astype(str).unique().tolist())
         kits_str = ", ".join(unique_kits) if unique_kits else "None"
@@ -933,13 +972,6 @@ def download_db_csv(n_clicks):
         logging.error(f"Error exporting pas_tracking to CSV: {e}")
         return dash.no_update
 
-
-
 # %% Run app
 app.layout = serve_layout
 
-if not local:
-    server = app.server
-else:
-    if __name__ == '__main__':
-        app.run(debug=True, port=8080)
