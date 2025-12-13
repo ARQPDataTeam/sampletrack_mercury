@@ -27,7 +27,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/arqpdatateam/qp_fieldnote_pas:latest
+          tags: ghcr.io/arqpdatateam/sampletrack_mercury:latest
 
       - name: Logout of GitHub Container Registry
         run: docker logout ghcr.io
