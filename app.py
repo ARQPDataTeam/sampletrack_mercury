@@ -15,6 +15,8 @@ import socket
 import dash.exceptions
 import dash_ag_grid as dag
 import re
+import traceback
+from flask import Response
 
 # Local dev boolean
 computer = socket.gethostname()
@@ -24,7 +26,7 @@ else:
     local = False
 
 # Version number to display
-version = "4.0"
+version = "4.1"
 
 # Setup logger
 if not os.path.exists('logs'):
@@ -943,3 +945,13 @@ if not local:
 else:
     if __name__ == '__main__':
         app.run(debug=True, port=8080)
+
+# show traceback in browser for debugging
+@app.server.errorhandler(Exception)
+def show_exception(e):
+    tb = traceback.format_exc()
+    return Response(
+        f"<pre>{tb}</pre>",
+        status=500,
+        mimetype="text/html"
+    )
