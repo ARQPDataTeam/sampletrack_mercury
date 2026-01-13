@@ -1,10 +1,9 @@
 import dash
-from dash import html, Input, Output, State, ctx, dcc, Dash
+from dash import html, Input, Output, State, ctx, dcc
 import dash_bootstrap_components as dbc
 import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine, text
-# from credentials import sql_engine_string_generator
 from flask import request
 from datetime import datetime
 import os
@@ -18,15 +17,16 @@ from dotenv import load_dotenv
 parent_dir=os.getcwd()
 computer = socket.gethostname().lower()
 
-if computer == 'wontn74902':
+if computer == 'wontn774787':
     host = 'local'
+    load_dotenv(parent_dir+ '\\.env') # default is relative local directory 
+    DB_HOST = os.getenv('DATAHUB_PSQL_SERVER')
+    DB_USER = os.getenv('DATAHUB_PSQL_USER')
+    DB_PASS = os.getenv('DATAHUB_PSQL_PASSWORD')
+
 elif 'qpdata' in computer:
     host = 'qpdata'
     load_dotenv(parent_dir+ '/.env') # default is relative local directory 
-
-    # DB_HOST = os.getenv('QP_SERVER')
-    # DB_USER = os.getenv('QP_PSQL_USER')
-    # DB_PASS = os.getenv('QP_PSQL_PASSWORD')
     DB_HOST = os.getenv('DATAHUB_PSQL_SERVER')
     DB_USER = os.getenv('DATAHUB_PSQL_USER')
     DB_PASS = os.getenv('DATAHUB_PSQL_PASSWORD')
@@ -34,26 +34,14 @@ elif 'qpdata' in computer:
 elif 'sandbox' in computer:
     host = 'qpdata'
     load_dotenv(parent_dir+ '/.env') # default is relative local directory 
-
-    DB_HOST = os.getenv('DATAHUB_PSQL_SERVER')
-    DB_USER = os.getenv('DATAHUB_PSQL_USER')
-    DB_PASS = os.getenv('DATAHUB_PSQL_PASSWORD')
-    # DB_HOST = os.getenv('QP_SERVER')
-    # DB_USER = os.getenv('QP_PSQL_USER')
-    # DB_PASS = os.getenv('QP_PSQL_PASSWORD')
-
-else:
-    host = 'fsdh'
-    load_dotenv(parent_dir+ '/.env') # default is relative local directory 
-
     DB_HOST = os.getenv('DATAHUB_PSQL_SERVER')
     DB_USER = os.getenv('DATAHUB_PSQL_USER')
     DB_PASS = os.getenv('DATAHUB_PSQL_PASSWORD')
 
-print(host, DB_HOST, DB_USER)
+print(host)
 
 # Version number to display
-version = "4.0"
+version = "4.5"
 
 # Setup logger
 if not os.path.exists('logs'):
@@ -75,13 +63,13 @@ logger.info(f"Host environment detected: {computer}")
 
 external_stylesheets=[
         dbc.themes.SLATE,
-        # "https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css",
+        "https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css",
         '/assets/flatpickr.min.css',
         '/assets/custom.css'
 ]
 external_scripts = [
-    # "https://cdn.jsdelivr.net/npm/flatpickr",
-    # "https://cdn.jsdelivr.net/npm/inputmask/dist/inputmask.min.js"
+    "https://cdn.jsdelivr.net/npm/flatpickr",
+    "https://cdn.jsdelivr.net/npm/inputmask/dist/inputmask.min.js",
     '/assets/flatpickr.min.js',
     '/assets/inputmask.min.js',
 ]
@@ -107,9 +95,7 @@ elif host == 'qpdata':
                     )
     print('qpdata:  app and server initialized')
 else:
-    url_prefix = "/app/AQPD/"
     app = dash.Dash(__name__,
-                    url_base_pathname=url_prefix,
                     external_stylesheets=external_stylesheets, 
                     external_scripts=external_scripts,
                     suppress_callback_exceptions=True
@@ -118,21 +104,17 @@ else:
 request_headers = {}
 
 # Get connection string
-# dcp_sql_engine_string = sql_engine_string_generator('DATAHUB_PSQL_SERVER', 'dcp', 'DATAHUB_PSQL_USER', 'DATAHUB_PSQL_PASSWORD', True)
 dcp_sql_engine_string = ('postgresql://{}:{}@{}/{}?sslmode=require').format(DB_USER,DB_PASS,DB_HOST,'dcp')
 dcp_sql_engine = create_engine(dcp_sql_engine_string)
 
-# mercury_sql_engine_string = sql_engine_string_generator('DATAHUB_PSQL_SERVER', 'mercury_passive', 'DATAHUB_PSQL_USER', 'DATAHUB_PSQL_PASSWORD', True)
 mercury_sql_engine_string = ('postgresql://{}:{}@{}/{}?sslmode=require').format(DB_USER,DB_PASS,DB_HOST,'mercury_passive')
 mercury_sql_engine = create_engine(mercury_sql_engine_string)
-
-print('after db engine creation')
 
 # Global storage for the new dataframe
 database_df = pd.DataFrame(columns=[
     'sample_start', 'sample_end', 'sampleid', 'kitid', 'samplerid',
     'siteid', 'shipped_location', 'shipped_date', 'return_date',
-    'sample_type', 'note', 'screen_sampling_rate'
+    'sample_type', 'note', 'screen_sampling_rate','delete'
 ])
 
 # Global table headers dict
@@ -174,10 +156,6 @@ def serve_layout():
         f"{row.description} ({row.siteid})"
         for _, row in sites.query("projectid == 'MERCURY_PASSIVE'").iterrows()
     ])
-
-    ## test debug output only
-    print (sites_clean [:5])  # Print first 5 entries for verification)
-
     dcp_sql_engine.dispose()
     mercury_sql_engine.dispose()
     
@@ -191,15 +169,15 @@ def serve_layout():
                 {"field": "sampleid", "headerName": "Sample ID", "editable": False, "suppressSizeToFit": True, "width": 156,"hide": True},
                 {"field": "kitid", "headerName": "Kit ID", "editable": True, "suppressSizeToFit": True, "width": 100},
                 {"field": "samplerid", "headerName": "Sampler ID", "editable": True, "suppressSizeToFit": True, "width": 127},
-                #{"field": "siteid", "headerName": "Site ID", "editable": True, "suppressSizeToFit": True, "width": 150,
-                # "cellEditor": "agRichSelectCellEditor","cellEditorParams": {"values": sites_clean,"searchEnabled": True,"filterList": True,}},
                 {"field": "siteid", "headerName": "Site", "editable": True, "suppressSizeToFit": True, "width": 150,
                  "cellEditor": {"function": "SearchableDropdownEditor"},"cellEditorParams": {"values": sites_clean}},
                 {"field": "shipped_location", "headerName": "Shipped Location", "editable": True, "suppressSizeToFit": True, "width": 165},
                 {"field": "shipped_date","headerName": "Shipped Date","editable": True,"cellEditor": {"function": "DatePicker"},"suppressSizeToFit": True, "width": 146},
                 {"field": "return_date", "headerName": "Return Date", "editable": True,"cellEditor": {"function": "DatePicker"},"suppressSizeToFit": True, "width": 133},
                 {"field": "sample_type", "headerName": "Sample Type", "editable": True, "cellEditor": "agSelectCellEditor", "cellEditorParams": {"values": ["Sample", "Blank"]}, "suppressSizeToFit": True, "width": 130},
-                {"field": "note", "headerName": "Note", "editable": True, "suppressSizeToFit": True, "width": 200}
+                {"field": "note", "headerName": "Note", "editable": True, "suppressSizeToFit": True, "width": 100},
+                {"field": "delete","width": 100,"cellRenderer": "DBC_Button_Simple","cellRendererParams": {"color": "danger"}},
+                {"field": "original_sampleid","hide": True}
             ],
             defaultColDef={"resizable": True, "sortable": True,"editable": True},
             columnSize="sizeToFit",
@@ -211,7 +189,6 @@ def serve_layout():
                              "undoRedoCellEditing": True,
                              "undoRedoCellEditingLimit": 20,
                              "suppressClipboardPaste": False,
-                             "components":{},
                              "loading": False
             },
             className="ag-theme-alpine-dark",
@@ -286,6 +263,7 @@ def serve_layout():
         html.Hr(),
         tablehtml,
         html.Div(id="edit-confirmation", style={"textAlign": "center", "color": "green", "marginTop": "10px"}),
+        html.Div(id="overwrite-confirmation", style={"textAlign": "center", "color": "green", "marginTop": "10px"}),
         dbc.Modal(
             id="new-entry-modal",
             is_open=False,
@@ -418,8 +396,25 @@ def serve_layout():
                 ])
             ]
         ),
+        dbc.Modal(
+            id="delete-confirm-modal",
+            is_open=False,
+            centered=True,
+            children=[
+                dbc.ModalHeader("Confirm Delete"),
+                dbc.ModalBody(
+                    id="delete-confirm-text",
+                    children="Are you sure you want to delete this entry? This cannot be undone."
+                ),
+                dbc.ModalFooter([
+                    dbc.Button("Yes, Delete", id="confirm-delete-btn", color="danger", className="me-2"),
+                    dbc.Button("Cancel", id="cancel-delete-btn", color="secondary")
+                ])
+            ]
+        ),
         dcc.Store(id="duplicate-rows", data=[]),
-        dcc.Store(id="overwrite-confirmed", data=False)
+        dcc.Store(id="overwrite-confirmed", data=False),
+        dcc.Store(id="row-pending-delete")
     ])
     ]
 
@@ -596,7 +591,9 @@ def validate_and_build_df(n_clicks, kit_id_value, entry_data, current_components
             'return_date': None,
             'sample_type': entry.get("radio", ""),
             'note': None,
-            'screen_sampling_rate': None
+            'screen_sampling_rate': None,
+            'delete': 'Delete',
+            'original_sampleid': None
         })
 
     database_df = pd.DataFrame(records)
@@ -613,6 +610,7 @@ def validate_and_build_df(n_clicks, kit_id_value, entry_data, current_components
 )
 def sync_table_edits(cellValueChanged, current_grid_data):
     global database_df
+    
     if not cellValueChanged:
         raise dash.exceptions.PreventUpdate
 
@@ -714,6 +712,7 @@ app.clientside_callback(
 
 # %% Upload Data button with duplicates checking
 @app.callback(
+    Output("database-table",'rowData', allow_duplicate=True),
     Output("edit-confirmation", "children", allow_duplicate=True),
     Output("overwrite-confirm-modal", "is_open"),
     Output("duplicate-rows", "data"),
@@ -733,10 +732,11 @@ def upload_data_to_database(n_clicks):
     }
 
     
+    df_to_upload = database_df[database_df['samplerid'].astype(str).str.strip() != ''].copy().drop(columns=["delete"], errors="ignore")
+
     # Check if table is empty
-    df_to_upload = database_df[database_df['samplerid'].astype(str).str.strip() != ''].copy()
     if df_to_upload.empty:
-        return html.Div("No valid data to upload. All entries are empty or have empty Sampler IDs.", style={"color": "orange"}), False, []
+        return html.Div("No valid data to upload. All entries are empty or have empty Sample IDs.", style={"color": "orange"}), False, []
     
     # Convert columns to datetime
     for col in ['sample_start', 'sample_end', 'shipped_date', 'return_date']:
@@ -756,29 +756,94 @@ def upload_data_to_database(n_clicks):
     try:
         existing_sampleids_df = pd.read_sql_query("SELECT sampleid FROM pas_tracking", mercury_sql_engine)
         existing_sampleids = set(existing_sampleids_df['sampleid'].dropna().astype(str).tolist())
-
         df_to_upload_sampleids = df_to_upload['sampleid'].astype(str)
+        df_to_upload['siteid'] = df_to_upload['siteid'].map(siteid_map).fillna(df_to_upload['siteid']) # change column to only contain siteid
         duplicate_mask = df_to_upload_sampleids.isin(existing_sampleids)
+        
+        # Check if sampleid was changed
+        id_changed = df_to_upload[
+            (df_to_upload["sampleid"] != df_to_upload["original_sampleid"]) &
+            (df_to_upload["original_sampleid"].notna()) &
+            (~duplicate_mask)
+        ]
+        with mercury_sql_engine.begin() as conn:
+            def nan_to_none(val):
+                return None if pd.isna(val) else val
 
+            # Update existing rows
+            updated_ids = []
+            for _, row in id_changed.iterrows():
+                conn.execute(
+                    text("""
+                        UPDATE pas_tracking
+                        SET
+                            sampleid = :new_sid,
+                            kitid = :kitid,
+                            samplerid = :samplerid,
+                            sample_start = :sample_start,
+                            sample_end = :sample_end,
+                            siteid = :siteid,
+                            shipped_location = :shipped_location,
+                            shipped_date = :shipped_date,
+                            return_date = :return_date,
+                            sample_type = :sample_type,
+                            note = :note
+                        WHERE sampleid = :old_sid
+                    """),
+                    {
+                        "old_sid": nan_to_none(row["original_sampleid"]),
+                        "new_sid": nan_to_none(row["sampleid"]),
+                        "kitid": nan_to_none(row["kitid"]),
+                        "samplerid": nan_to_none(row["samplerid"]),
+                        "sample_start": nan_to_none(row["sample_start"]),
+                        "sample_end": nan_to_none(row["sample_end"]),
+                        "siteid": nan_to_none(row["siteid"]),
+                        "shipped_location": nan_to_none(row["shipped_location"]),
+                        "shipped_date": nan_to_none(row["shipped_date"]),
+                        "return_date": nan_to_none(row["return_date"]),
+                        "sample_type": nan_to_none(row["sample_type"]),
+                        "note": nan_to_none(row["note"])
+                    }
+                )
+                updated_ids.append(row["sampleid"])
+
+            # Insert brand-new rows
+            new_rows = df_to_upload[df_to_upload["original_sampleid"].isna() & (~duplicate_mask)]
+            new_ids = new_rows["sampleid"].tolist()
+
+            new_rows.drop(columns=["original_sampleid"]).to_sql(
+                "pas_tracking",
+                conn,
+                if_exists="append",
+                index=False
+            )
+
+        # Update original_sampleid in the global dataframe for the rows that were changed
+        database_df["original_sampleid"] = database_df["sampleid"]
+
+        # include timestamp in success message
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        messages = []
+        if updated_ids:
+            messages.append(f"Updated existing entries: {', '.join(updated_ids)}")
+        if new_ids:
+            messages.append(f"Added new entries: {', '.join(new_ids)}")
+        
+        if updated_ids == [] and new_ids == []:
+            success_msg = ("No new or updated entries were uploaded. Checking for overwrites...")
+        else:
+            success_msg = ". ".join(messages) + f". Submitted at {timestamp}."
+
+        # Handle existing sampleid rows whose id did NOT change (i.e., duplicate overwriting)
         if duplicate_mask.any():
             duplicate_df = df_to_upload[duplicate_mask].copy()
-            return dash.no_update, True, duplicate_df.to_dict("records")
-        
-        df_to_upload['siteid'] = df_to_upload['siteid'].map(siteid_map).fillna(df_to_upload['siteid']) # change column to only contain siteid
-        df_to_upload.to_sql('pas_tracking', mercury_sql_engine, if_exists='append', index=False)
+            return database_df.to_dict("records"),success_msg, True, duplicate_df.to_dict("records")
 
-        # include unique kit IDs and timestamp in success message
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        unique_kits = sorted(df_to_upload['kitid'].dropna().astype(str).unique().tolist())
-        kits_str = ", ".join(unique_kits) if unique_kits else "None"
-        success_msg = (
-            f"Successfully uploaded {len(df_to_upload)} new entries to 'pas_tracking' table! "
-            f"Kit ID(s): {kits_str}. Submitted at {timestamp}."
-        )
-        return html.Div(success_msg, style={"color": "green"}), False, []
+        return database_df.to_dict("records"),html.Div(success_msg, style={"color": "green"}), False, []
     except Exception as e:
         logging.error(f"Database upload error: {e}")
-        return html.Div(f"Error uploading data: {e}.", style={"color": "red"}), False, []
+        return database_df.to_dict("records"),html.Div(f"Error uploading data: {e}.", style={"color": "red"}), False, []
     
 # %% Update button callback
 @app.callback(
@@ -801,6 +866,7 @@ def toggle_update_modal(open_clicks, done_clicks, is_open, db_tracking_data):
             for col in ["sample_start", "sample_end"]:
                 if col in db_df.columns:
                     db_df[col] = pd.to_datetime(db_df[col], errors='coerce').dt.strftime("%Y-%m-%d %H:%M:%S")
+            db_df['delete'] = 'Delete' 
             loading_msg = ""  # Hide loading spinner
         except Exception as e:
             logging.error(f"Error loading pas_tracking table: {e}")
@@ -816,7 +882,7 @@ def toggle_update_modal(open_clicks, done_clicks, is_open, db_tracking_data):
 
 # %% Confirm overwrite
 @app.callback(
-    Output("edit-confirmation", "children",allow_duplicate=True),
+    Output("overwrite-confirmation", "children",allow_duplicate=True),
     Output("overwrite-confirm-modal", "is_open",allow_duplicate=True),
     Input("confirm-overwrite", "n_clicks"),
     State("duplicate-rows", "data"),
@@ -835,9 +901,9 @@ def confirm_overwrite(n_clicks, duplicates_data):
             for sid in sampleids:
                 conn.execute(text("DELETE FROM pas_tracking WHERE sampleid = :sid"), {"sid": sid})
 
-        df_overwrite.to_sql('pas_tracking', mercury_sql_engine, if_exists='append', index=False)
-
-        return html.Div(f"Successfully overwrote {len(df_overwrite)} entries.", style={"color": "green"}), False
+        df_overwrite.drop(columns=['original_sampleid']).to_sql('pas_tracking', mercury_sql_engine, if_exists='append', index=False)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return html.Div(f"Successfully overwrote {len(df_overwrite)} entries. Submitted at {timestamp}.", style={"color": "green"}), False
 
     except Exception as e:
         logging.error(f"Overwrite failed: {e}")
@@ -921,6 +987,8 @@ def validate_and_display_kitid(n_clicks, text_value, dropdown_value, db_tracking
         )
     )
     global database_df
+    filtered_df["original_sampleid"] = filtered_df["sampleid"]
+    filtered_df["delete"] = "Delete"
     database_df = filtered_df
 
     return "", {}, False, database_df.to_dict("records"), filtered_df.to_dict("records"),{"display": "block", "margin-top": "20px"}
@@ -972,6 +1040,93 @@ def download_db_csv(n_clicks):
         logging.error(f"Error exporting pas_tracking to CSV: {e}")
         return dash.no_update
 
+# %% Delete row callbacks
+@app.callback(
+    Output("delete-confirm-modal", "is_open"),
+    Output("row-pending-delete", "data"),
+    Input("database-table", "cellClicked"),
+    State("database-table", "rowData"),
+    prevent_initial_call=True
+)
+def open_delete_confirm(cell, rows):
+    if not cell:
+        raise dash.exceptions.PreventUpdate
+
+    # Only react to delete column
+    if cell.get("colId") != "delete":
+        raise dash.exceptions.PreventUpdate
+
+    row_index = cell.get("rowIndex")
+
+    if row_index is None or row_index >= len(rows):
+        raise dash.exceptions.PreventUpdate
+
+    return True, {
+        "rowIndex": row_index,
+        "rowData": rows[row_index]
+    }
+
+@app.callback(
+    Output("delete-confirm-modal", "is_open",allow_duplicate=True),
+    Input("cancel-delete-btn", "n_clicks"),
+    prevent_initial_call=True
+)
+def cancel_delete(n):
+    return False
+
+@app.callback(
+    Output("database-table", "rowData", allow_duplicate=True),
+    Output("delete-confirm-modal", "is_open",allow_duplicate=True),
+    Output("edit-confirmation", "children"),
+    Input("confirm-delete-btn", "n_clicks"),
+    State("row-pending-delete", "data"),
+    State("database-table", "rowData"),
+    prevent_initial_call=True
+)
+def confirm_delete(n_clicks, pending, current_rows):
+    global database_df
+
+    if not pending:
+        raise dash.exceptions.PreventUpdate
+
+    row_index = pending["rowIndex"]
+    row = pending["rowData"]
+    sampleid = row.get("sampleid")
+
+    # Delete from database (only if persisted)
+    if sampleid:
+        try:
+            with mercury_sql_engine.begin() as conn:
+                conn.execute(
+                    text("DELETE FROM pas_tracking WHERE sampleid = :sid"),
+                    {"sid": sampleid}
+                )
+        except Exception as e:
+            return (
+                dash.no_update,
+                False,
+                html.Div(f"Delete failed: {e}", style={"color": "red"})
+            )
+
+    # Remove from dataframe
+    database_df = database_df[
+        database_df["sampleid"] != sampleid
+    ]
+
+    # Remove from grid
+    new_rows = [
+        r for i, r in enumerate(current_rows) if i != row_index
+    ]
+
+    return (
+        new_rows,
+        False,
+        html.Div(f"Deleted sample {sampleid}", style={"color": "orange"})
+    )
+
+
 # %% Run app
 app.layout = serve_layout
 
+if  host=='local':
+    app.run(debug=True, port=8080)
