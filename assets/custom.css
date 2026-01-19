@@ -23,3 +23,10 @@
 
   text-align: left !important;
 }
+
+
+.btn-danger {
+  font-size: 12px;
+  padding-bottom: 4px;
+  padding-top: 4px;
+}

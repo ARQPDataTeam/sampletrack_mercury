@@ -5,7 +5,6 @@ openpyxl
 numpy
 xlrd
 dash
-dash_breakpoints
 dash_bootstrap_components
 typing_extensions
 azure-identity
