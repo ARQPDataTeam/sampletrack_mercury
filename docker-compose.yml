@@ -1,0 +1,10 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  web:
+    build: .
+    image: ghcr.io/arqpdatateam/sampletrack_mercury:latest
+    container_name: sampletrack_mercury
+    ports:
+      - "80:8080"
