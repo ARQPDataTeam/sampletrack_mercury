@@ -13,35 +13,11 @@ import dash.exceptions
 import dash_ag_grid as dag
 import re
 from dotenv import load_dotenv 
-
-parent_dir=os.getcwd()
-computer = socket.gethostname().lower()
-
-if computer == 'wontn774787':
-    host = 'local'
-    load_dotenv(parent_dir+ '\\.env') # default is relative local directory 
-    DB_HOST = os.getenv('DATAHUB_PSQL_SERVER')
-    DB_USER = os.getenv('DATAHUB_PSQL_USER')
-    DB_PASS = os.getenv('DATAHUB_PSQL_PASSWORD')
-
-elif 'qpdata' in computer:
-    host = 'qpdata'
-    load_dotenv(parent_dir+ '/.env') # default is relative local directory 
-    DB_HOST = os.getenv('DATAHUB_PSQL_SERVER')
-    DB_USER = os.getenv('DATAHUB_PSQL_USER')
-    DB_PASS = os.getenv('DATAHUB_PSQL_PASSWORD')
-
-elif 'sandbox' in computer:
-    host = 'qpdata'
-    load_dotenv(parent_dir+ '/.env') # default is relative local directory 
-    DB_HOST = os.getenv('DATAHUB_PSQL_SERVER')
-    DB_USER = os.getenv('DATAHUB_PSQL_USER')
-    DB_PASS = os.getenv('DATAHUB_PSQL_PASSWORD')
-
-print(host)
+from credentials import get_host_environment, get_credentials, create_dash_app
+from pandas.api.types import DatetimeTZDtype
 
 # Version number to display
-version = "4.5"
+version = "5.0"
 
 # Setup logger
 if not os.path.exists('logs'):
@@ -53,61 +29,34 @@ logging.basicConfig(
     filename='logs/log.log',
     filemode='w+'
 )
-
 logging.getLogger("azure").setLevel(logging.DEBUG)
-
 logger = logging.getLogger(__name__)
-
 logging.basicConfig(level=logging.INFO)
-logger.info(f"Host environment detected: {computer}")
 
-external_stylesheets=[
-        dbc.themes.SLATE,
-        "https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css",
-        '/assets/flatpickr.min.css',
-        '/assets/custom.css'
-]
-external_scripts = [
-    "https://cdn.jsdelivr.net/npm/flatpickr",
-    "https://cdn.jsdelivr.net/npm/inputmask/dist/inputmask.min.js",
-    '/assets/flatpickr.min.js',
-    '/assets/inputmask.min.js',
-]
+# set up path details
+parent_dir = os.getcwd()
+logger.info(f"parent path: {parent_dir}")
+path_prefix = '/' + os.path.basename(os.path.normpath(parent_dir)) + '/'
+logger.info(f"path_prefix: {path_prefix}")
 
-# initialize the app based on host
-if host == 'fsdh':
-    url_prefix = "/app/AQPD/"
-    app = dash.Dash(__name__,
-                    requests_pathname_prefix=url_prefix,
-                    routes_pathname_prefix=url_prefix,
-                    external_stylesheets=external_stylesheets, 
-                    external_scripts=external_scripts,
-                    suppress_callback_exceptions=True
-                    )
-elif host == 'qpdata':
-    url_prefix = "/dash_SampleTrack_Mercury/"
-    app = dash.Dash(__name__,
-                    requests_pathname_prefix=url_prefix,
-                    external_stylesheets=external_stylesheets, 
-                    external_scripts=external_scripts,
-                    suppress_callback_exceptions=True,
-                    eager_loading=True
-                    )
-    print('qpdata:  app and server initialized')
-else:
-    app = dash.Dash(__name__,
-                    external_stylesheets=external_stylesheets, 
-                    external_scripts=external_scripts,
-                    suppress_callback_exceptions=True
-                    )
+# set up the sql connection string
+COMPUTER, SERVER, VIEWER_USER, VIEWER_PASSWORD, EDITOR_USER, EDITOR_PASSWORD, DATABASE, URL_PREFIX = get_credentials(parent_dir)
 
+# determine host environment
+host = get_host_environment(COMPUTER)
+
+# initialize the app based on host, specify the url_prefix if needed
+app, server = create_dash_app(host, path_prefix, URL_PREFIX)
+
+
+# empty dictionary to hold headers
 request_headers = {}
 
 # Get connection string
-dcp_sql_engine_string = ('postgresql://{}:{}@{}/{}?sslmode=require').format(DB_USER,DB_PASS,DB_HOST,'dcp')
+dcp_sql_engine_string = ('postgresql://{}:{}@{}/{}?sslmode=require').format(EDITOR_USER,EDITOR_PASSWORD,SERVER,'dcp')
 dcp_sql_engine = create_engine(dcp_sql_engine_string)
 
-mercury_sql_engine_string = ('postgresql://{}:{}@{}/{}?sslmode=require').format(DB_USER,DB_PASS,DB_HOST,'mercury_passive')
+mercury_sql_engine_string = ('postgresql://{}:{}@{}/{}?sslmode=require').format(EDITOR_USER,EDITOR_PASSWORD,SERVER,'mercury_passive')
 mercury_sql_engine = create_engine(mercury_sql_engine_string)
 
 # Global storage for the new dataframe
@@ -604,6 +553,7 @@ def validate_and_build_df(n_clicks, kit_id_value, entry_data, current_components
 @app.callback(
     Output("edit-confirmation", "children",allow_duplicate=True),
     Output("database-table", "rowData"),
+    Output("overwrite-confirmation", "children", allow_duplicate=True),
     Input("database-table", "cellValueChanged"),
     State("database-table", "rowData"),
     prevent_initial_call=True
@@ -667,7 +617,7 @@ def sync_table_edits(cellValueChanged, current_grid_data):
     database_df = pd.DataFrame(updated_grid_data)
     #database_df.to_csv("debug_database_df.csv",index =False)
 
-    return html.Div(feedback_message, style=feedback_style), updated_grid_data
+    return html.Div(feedback_message, style=feedback_style), updated_grid_data,[]
 
 # %% Grab user email from headers
 @app.callback(
@@ -725,25 +675,78 @@ def upload_data_to_database(n_clicks):
     if n_clicks is None:
         raise dash.exceptions.PreventUpdate
     
-    
     siteid_map = {
         f"{row.description} ({row.siteid})": row.siteid
         for _, row in sites.query("projectid == 'MERCURY_PASSIVE'").iterrows()
     }
 
+    # Prepare DataFrame for upload
+    df_to_upload = database_df.copy().drop(columns=["delete"], errors="ignore")
     
-    df_to_upload = database_df[database_df['samplerid'].astype(str).str.strip() != ''].copy().drop(columns=["delete"], errors="ignore")
-
     # Check if table is empty
     if df_to_upload.empty:
-        return html.Div("No valid data to upload. All entries are empty or have empty Sample IDs.", style={"color": "orange"}), False, []
+        return database_df.to_dict("records"),html.Div("No valid data to upload. All entries are missing kit and/or sampler IDs.", style={"color": "orange"}), False, []
     
+    # Validate Kit ID and Sampler ID formats
+    kitid_mask = df_to_upload["kitid"].astype(str).str.match(r"^EC-\d{4}$")
+    invalid_kitids = df_to_upload.loc[~kitid_mask, "kitid"]
+    if not kitid_mask.all():
+        if invalid_kitids.isnull().any():
+            msg = "Kit ID(s) missing."
+        else:
+            msg = f"Invalid Kit ID(s): {', '.join(invalid_kitids)} (expected format EC-XXXX)"
+        return (
+            database_df.to_dict("records"),
+            html.Div(msg,style={"color": "orange"}),
+            False,
+            []
+        )
+    samplerid_mask = df_to_upload["samplerid"].astype(str).str.match(r"^ECCC\d{4}$")
+    invalid_samplerids = df_to_upload.loc[~samplerid_mask, "samplerid"]
+    if not samplerid_mask.all():
+        if invalid_samplerids.isnull().any():
+            msg = "Sampler ID(s) missing."
+        else:
+            msg = f"Invalid Sampler ID(s): {', '.join(invalid_samplerids)} (expected format ECCCXXXX)"
+        return (
+                database_df.to_dict("records"),
+                html.Div(msg,style={"color": "orange"}),
+                False,
+                []
+            )
+
+
+    # Find duplicates inside the table
+    duplicate_mask = df_to_upload["sampleid"].duplicated(keep=False)
+    if duplicate_mask.any():
+        duplicate_df = df_to_upload.loc[duplicate_mask].copy()
+
+        duplicate_ids = (
+            duplicate_df["sampleid"]
+            .dropna()
+            .unique()
+            .tolist()
+        )
+
+        msg = (
+            "Duplicate Sample ID(s) found in the table: "
+            + ", ".join(duplicate_ids)
+            + ". Each Sample ID must be unique before uploading."
+        )
+
+        return (
+            database_df.to_dict("records"),
+            html.Div(msg, style={"color": "red"}),
+            False,
+            duplicate_df.to_dict("records"),
+        )
+
     # Convert columns to datetime
     for col in ['sample_start', 'sample_end', 'shipped_date', 'return_date']:
         df_to_upload[col] = pd.to_datetime(df_to_upload[col], errors='coerce')
 
         # Convert any timezone-aware datetimes to naive
-        if pd.api.types.is_datetime64tz_dtype(df_to_upload[col]):
+        if isinstance(df_to_upload[col].dtype, DatetimeTZDtype):
             df_to_upload[col] = df_to_upload[col].dt.tz_convert(None)
     
         # Drop tzinfo even from objects that were naive-but-strange
@@ -823,7 +826,6 @@ def upload_data_to_database(n_clicks):
 
         # include timestamp in success message
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
         messages = []
         if updated_ids:
             messages.append(f"Updated existing entries: {', '.join(updated_ids)}")
@@ -831,7 +833,7 @@ def upload_data_to_database(n_clicks):
             messages.append(f"Added new entries: {', '.join(new_ids)}")
         
         if updated_ids == [] and new_ids == []:
-            success_msg = ("No new or updated entries were uploaded. Checking for overwrites...")
+            success_msg = ("No new or updated entries were found. Checking for overwrites...")
         else:
             success_msg = ". ".join(messages) + f". Submitted at {timestamp}."
 
@@ -1066,6 +1068,7 @@ def open_delete_confirm(cell, rows):
         "rowData": rows[row_index]
     }
 
+# %% Cancel delete callback
 @app.callback(
     Output("delete-confirm-modal", "is_open",allow_duplicate=True),
     Input("cancel-delete-btn", "n_clicks"),
@@ -1074,10 +1077,12 @@ def open_delete_confirm(cell, rows):
 def cancel_delete(n):
     return False
 
+# %% Confirm delete callback
 @app.callback(
     Output("database-table", "rowData", allow_duplicate=True),
     Output("delete-confirm-modal", "is_open",allow_duplicate=True),
     Output("edit-confirmation", "children"),
+    Output("overwrite-confirmation", "children", allow_duplicate=True),
     Input("confirm-delete-btn", "n_clicks"),
     State("row-pending-delete", "data"),
     State("database-table", "rowData"),
@@ -1105,7 +1110,8 @@ def confirm_delete(n_clicks, pending, current_rows):
             return (
                 dash.no_update,
                 False,
-                html.Div(f"Delete failed: {e}", style={"color": "red"})
+                html.Div(f"Delete failed: {e}", style={"color": "red"}),
+                []
             )
 
     # Remove from dataframe
@@ -1121,12 +1127,15 @@ def confirm_delete(n_clicks, pending, current_rows):
     return (
         new_rows,
         False,
-        html.Div(f"Deleted sample {sampleid}", style={"color": "orange"})
+        html.Div(f"Deleted sample {sampleid}", style={"color": "orange"}),
+        []
     )
 
 
-# %% Run app
+# Run the app
 app.layout = serve_layout
-
-if  host=='local':
-    app.run(debug=True, port=8080)
+if __name__ == "__main__":
+    if host == "local":
+        app.run(debug=True,port=8080)
+    else:
+        app.run(debug=False,port=8080)
