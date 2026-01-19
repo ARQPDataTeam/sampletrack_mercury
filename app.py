@@ -17,7 +17,7 @@ from credentials import get_host_environment, get_credentials, create_dash_app
 from pandas.api.types import DatetimeTZDtype
 
 # Version number to display
-version = "5.0"
+version = "5.1"
 
 # Setup logger
 if not os.path.exists('logs'):
@@ -128,7 +128,7 @@ def serve_layout():
                 {"field": "delete","width": 100,"cellRenderer": "DBC_Button_Simple","cellRendererParams": {"color": "danger"}},
                 {"field": "original_sampleid","hide": True}
             ],
-            defaultColDef={"resizable": True, "sortable": True,"editable": True},
+            defaultColDef={"resizable": True, "sortable": False,"editable": True},
             columnSize="sizeToFit",
             dashGridOptions={"rowSelection":"single",
                              "animateRows": True,
@@ -353,7 +353,7 @@ def serve_layout():
                 dbc.ModalHeader("Confirm Delete"),
                 dbc.ModalBody(
                     id="delete-confirm-text",
-                    children="Are you sure you want to delete this entry? This cannot be undone."
+                    children="Are you sure you want to delete this entry from the database? This cannot be undone."
                 ),
                 dbc.ModalFooter([
                     dbc.Button("Yes, Delete", id="confirm-delete-btn", color="danger", className="me-2"),
@@ -682,7 +682,7 @@ def upload_data_to_database(n_clicks):
 
     # Prepare DataFrame for upload
     df_to_upload = database_df.copy().drop(columns=["delete"], errors="ignore")
-    
+
     # Check if table is empty
     if df_to_upload.empty:
         return database_df.to_dict("records"),html.Div("No valid data to upload. All entries are missing kit and/or sampler IDs.", style={"color": "orange"}), False, []
@@ -1127,7 +1127,7 @@ def confirm_delete(n_clicks, pending, current_rows):
     return (
         new_rows,
         False,
-        html.Div(f"Deleted sample {sampleid}", style={"color": "orange"}),
+        html.Div(f"Deleted sample {sampleid} from the database.", style={"color": "orange"}),
         []
     )
 
