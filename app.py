@@ -8,16 +8,14 @@ from flask import request
 from datetime import datetime
 import os
 import logging
-import socket
 import dash.exceptions
 import dash_ag_grid as dag
 import re
-from dotenv import load_dotenv 
 from credentials import get_host_environment, get_credentials, create_dash_app
 from pandas.api.types import DatetimeTZDtype
 
 # Version number to display
-version = "5.1"
+version = "5.2"
 
 # Setup logger
 if not os.path.exists('logs'):
@@ -47,7 +45,6 @@ host = get_host_environment(COMPUTER)
 
 # initialize the app based on host, specify the url_prefix if needed
 app, server = create_dash_app(host, path_prefix, URL_PREFIX)
-
 
 # empty dictionary to hold headers
 request_headers = {}
@@ -967,14 +964,9 @@ def validate_and_display_kitid(n_clicks, text_value, dropdown_value, db_tracking
     
         if matches.empty:
             return "No entries found for this Sampler ID.", {"color": "orange"}, True, dash.no_update, dash.no_update, dash.no_update
-    
-        # Most recent sample_start (fallback to index if missing)
-        if "sample_start" in matches.columns:
-            matches["sample_start"] = pd.to_datetime(matches["sample_start"], errors="coerce")
-            matches = matches.sort_values("sample_start", ascending=False)
         
-        recent_kitid = matches["kitid"].dropna().iloc[0]
-        filtered_df = db_tracking_data[db_tracking_data["kitid"] == recent_kitid]
+        recent_kitid = matches["kitid"].dropna()
+        filtered_df = db_tracking_data[(db_tracking_data["kitid"].isin(recent_kitid)) & (db_tracking_data["return_date"].isna())]
 
     if filtered_df.empty:
         return "No entries found for this Kit ID.", {"color": "orange"}, True, dash.no_update, dash.no_update, dash.no_update
