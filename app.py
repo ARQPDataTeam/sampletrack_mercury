@@ -15,7 +15,7 @@ from credentials import get_host_environment, get_credentials, create_dash_app
 from pandas.api.types import DatetimeTZDtype
 
 # Version number to display
-version = "5.2"
+version = "5.5"
 
 # Setup logger
 if not os.path.exists('logs'):
@@ -968,8 +968,13 @@ def validate_and_display_kitid(n_clicks, text_value, dropdown_value, db_tracking
         recent_kitid = matches["kitid"].dropna()
         filtered_df = db_tracking_data[(db_tracking_data["kitid"].isin(recent_kitid)) & (db_tracking_data["return_date"].isna())]
 
+        # if there are no entries with an empty return date, show all matches and their respective kits
+        if filtered_df.empty:
+            matches_all = db_tracking_data[db_tracking_data["kitid"].isin(matches["kitid"])].copy()
+            filtered_df = matches_all
+
     if filtered_df.empty:
-        return "No entries found for this Kit ID.", {"color": "orange"}, True, dash.no_update, dash.no_update, dash.no_update
+        return "No entries found.", {"color": "orange"}, True, dash.no_update, dash.no_update, dash.no_update
     
     # Update global dataframe
     filtered_df["sample_start"] = filtered_df["sample_start"].str.slice(stop=16)
@@ -1029,7 +1034,10 @@ def download_db_csv(n_clicks):
                 db_df[col] = pd.to_datetime(db_df[col], errors='coerce').dt.strftime("%Y-%m-%d %H:%M:%S")
         now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filename = f"pas_tracking_{now_str}.csv"
-        return dcc.send_data_frame(db_df.to_csv, filename=filename, index=False)
+
+        csv_str = db_df.to_csv(index=False)
+        csv_bytes = csv_str.encode("utf-8-sig")
+        return dcc.send_bytes(lambda buf: buf.write(csv_bytes), filename=filename)
     except Exception as e:
         logging.error(f"Error exporting pas_tracking to CSV: {e}")
         return dash.no_update
