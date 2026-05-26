@@ -15,7 +15,7 @@ from credentials import get_host_environment, get_credentials, create_dash_app
 from pandas.api.types import DatetimeTZDtype
 
 # Version number to display
-version = "5.5"
+version = "5.6"
 
 # Setup logger
 if not os.path.exists('logs'):
@@ -583,9 +583,36 @@ def sync_table_edits(cellValueChanged, current_grid_data):
                 feedback_message = f"Invalid datetime format for {user_friendly_col} at Row {user_friendly_row}. Expected format: YYYY-MM-DD HH:MM."
                 feedback_style = {"color": "red"}
             else:
+                # Temporarily set the new value so we can compare against the other field
                 updated_grid_data[changed_row_index][changed_col] = new_value_raw
-                feedback_message = f"{user_friendly_col} at Row {user_friendly_row}, changed from '{old_value}' to '{new_value_raw}'."
-                feedback_style = {"color": "green"}
+
+                # If the opposite field is present, enforce start < end
+                other_col = 'sample_end' if changed_col == 'sample_start' else 'sample_start'
+                other_val = updated_grid_data[changed_row_index].get(other_col)
+
+                if other_val and isinstance(other_val, str) and other_val.strip() != "":
+                    try:
+                        from datetime import datetime as _dt
+                        this_dt = _dt.strptime(str(new_value_raw), "%Y-%m-%d %H:%M")
+                        other_dt = _dt.strptime(str(other_val), "%Y-%m-%d %H:%M")
+                        # If editing start, ensure this_dt < other_dt; if editing end, ensure other_dt < this_dt
+                        if (changed_col == 'sample_start' and not (this_dt < other_dt)) or (changed_col == 'sample_end' and not (other_dt < this_dt)):
+                            # revert to old value
+                            updated_grid_data[changed_row_index][changed_col] = old_value if old_value is not None else ""
+                            feedback_message = f"{user_friendly_col} must be {'before' if changed_col=='sample_start' else 'after'} the {headerNames.get(other_col, other_col)} at Row {user_friendly_row}."
+                            feedback_style = {"color": "red"}
+                        else:
+                            feedback_message = f"{user_friendly_col} at Row {user_friendly_row}, changed from '{old_value}' to '{new_value_raw}'."
+                            feedback_style = {"color": "green"}
+                    except Exception:
+                        # If parsing fails for any reason, revert and warn
+                        updated_grid_data[changed_row_index][changed_col] = old_value if old_value is not None else ""
+                        feedback_message = f"Could not parse datetimes to compare {user_friendly_col} and {headerNames.get(other_col, other_col)} at Row {user_friendly_row}."
+                        feedback_style = {"color": "red"}
+                else:
+                    # Other field blank -> accept value without comparison
+                    feedback_message = f"{user_friendly_col} at Row {user_friendly_row}, changed from '{old_value}' to '{new_value_raw}'."
+                    feedback_style = {"color": "green"}
         else:
             updated_grid_data[changed_row_index][changed_col] = "" # Keep as empty string if user clears it in UI
             feedback_message = f"{user_friendly_col} at Row {user_friendly_row}, value cleared."
