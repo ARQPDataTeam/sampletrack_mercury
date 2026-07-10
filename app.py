@@ -15,7 +15,7 @@ from credentials import get_host_environment, get_credentials, create_dash_app
 from pandas.api.types import DatetimeTZDtype
 
 # Version number to display
-version = "5.6"
+version = "5.7"
 
 # Setup logger
 if not os.path.exists('logs'):
@@ -622,20 +622,20 @@ def sync_table_edits(cellValueChanged, current_grid_data):
         feedback_message = f"{user_friendly_col} at Row {user_friendly_row}, changed from '{old_value}' to '{new_value_raw}'."
         feedback_style = {"color": "green"}
 
-    # After updating the changed cell, check if sampleid needs to be updated
-    if changed_col in ['kitid', 'samplerid']:
-        row = updated_grid_data[changed_row_index]
-        current_kitid = row.get('kitid') if row.get('kitid') is not None else ""
-        current_samplerid = row.get('samplerid') if row.get('samplerid') is not None else ""
+    # # After updating the changed cell, check if sampleid needs to be updated
+    # if changed_col in ['kitid', 'samplerid']:
+    #     row = updated_grid_data[changed_row_index]
+    #     current_kitid = row.get('kitid') if row.get('kitid') is not None else ""
+    #     current_samplerid = row.get('samplerid') if row.get('samplerid') is not None else ""
         
-        # Construct the new sampleid
-        new_sampleid = f"{current_kitid}_{current_samplerid}"
+    #     # Construct the new sampleid
+    #     new_sampleid = f"{current_kitid}_{current_samplerid}"
         
-        # Only update if the sampleid actually changes to avoid unnecessary re-renders
-        if row.get('sampleid') != new_sampleid:
-            updated_grid_data[changed_row_index]['sampleid'] = new_sampleid
-            # Also update feedback message to indicate sampleid was updated
-            feedback_message += f" Sample ID updated to '{new_sampleid}'."
+    #     # Only update if the sampleid actually changes to avoid unnecessary re-renders
+    #     if row.get('sampleid') != new_sampleid:
+    #         updated_grid_data[changed_row_index]['sampleid'] = new_sampleid
+    #         # Also update feedback message to indicate sampleid was updated
+    #         feedback_message += f" Sample ID updated to '{new_sampleid}'."
 
 
     database_df = pd.DataFrame(updated_grid_data)
@@ -706,6 +706,17 @@ def upload_data_to_database(n_clicks):
 
     # Prepare DataFrame for upload
     df_to_upload = database_df.copy().drop(columns=["delete"], errors="ignore")
+
+    # Always regenerate sampleid from the visible fields
+    df_to_upload["sampleid"] = (
+        df_to_upload["kitid"].fillna("").astype(str)
+        + "_"
+        + df_to_upload["samplerid"].fillna("").astype(str)
+    )
+
+    # Keep the global dataframe in sync too
+    database_df["sampleid"] = df_to_upload["sampleid"]
+
 
     # Check if table is empty
     if df_to_upload.empty:
@@ -1056,15 +1067,31 @@ def toggle_update_input(search_mode, db_data):
 def download_db_csv(n_clicks):
     try:
         db_df = pd.read_sql_query("SELECT * FROM pas_tracking", mercury_sql_engine)
+
+        # Add site name column before siteid
+        site_name_map = (
+            sites.query("projectid == 'MERCURY_PASSIVE'")
+                 .set_index("siteid")["description"]
+                 .to_dict()
+        )
+
+        db_df.insert(
+            db_df.columns.get_loc("siteid"),
+            "site_name",
+            db_df["siteid"].map(site_name_map)
+        )
+
         for col in ["sample_start", "sample_end"]:
             if col in db_df.columns:
                 db_df[col] = pd.to_datetime(db_df[col], errors='coerce').dt.strftime("%Y-%m-%d %H:%M:%S")
+
         now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filename = f"pas_tracking_{now_str}.csv"
 
         csv_str = db_df.to_csv(index=False)
         csv_bytes = csv_str.encode("utf-8-sig")
         return dcc.send_bytes(lambda buf: buf.write(csv_bytes), filename=filename)
+
     except Exception as e:
         logging.error(f"Error exporting pas_tracking to CSV: {e}")
         return dash.no_update
@@ -1163,6 +1190,6 @@ def confirm_delete(n_clicks, pending, current_rows):
 app.layout = serve_layout
 if __name__ == "__main__":
     if host == "local":
-        app.run(debug=True,port=8080)
+        app.run(debug=True,port=8050)
     else:
         app.run(debug=False,port=8080)
